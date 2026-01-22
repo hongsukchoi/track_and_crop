@@ -1,0 +1,14 @@
+# Requirements for track_and_crop
+# Note: PyTorch and SAM2 are installed separately in setup.sh
+
+# Video processing
+opencv-python>=4.8.0
+
+# Array operations
+numpy>=1.24.0
+
+# Progress bars
+tqdm>=4.65.0
+
+# Viser 
+viser
