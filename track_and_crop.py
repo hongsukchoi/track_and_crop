@@ -10,6 +10,8 @@ Given a video and a bounding box of an object at the first frame, this script:
 
 import argparse
 import os
+import shutil
+import subprocess
 import sys
 import tempfile
 from pathlib import Path
@@ -24,6 +26,72 @@ import torch
 from tqdm import tqdm
 
 from sam2.build_sam import build_sam2_video_predictor
+
+
+def check_ffmpeg() -> bool:
+    """Check if ffmpeg is available."""
+    return shutil.which("ffmpeg") is not None
+
+
+def has_audio_stream(video_path: str) -> bool:
+    """Check if video has an audio stream using ffprobe."""
+    try:
+        result = subprocess.run(
+            [
+                "ffprobe",
+                "-v", "error",
+                "-select_streams", "a",
+                "-show_entries", "stream=codec_type",
+                "-of", "csv=p=0",
+                video_path,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        return "audio" in result.stdout
+    except Exception:
+        return False
+
+
+def merge_audio(video_path: str, audio_source: str, output_path: str) -> bool:
+    """
+    Merge video with audio from another source using ffmpeg.
+
+    Args:
+        video_path: Path to video file (without audio)
+        audio_source: Path to source video to copy audio from
+        output_path: Path to output video with audio
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        # Use ffmpeg to combine video with audio
+        # -c:v copy: copy video stream without re-encoding
+        # -c:a aac: encode audio as AAC for compatibility
+        # -map 0:v: take video from first input
+        # -map 1:a: take audio from second input
+        # -shortest: end when shortest stream ends
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-y",  # Overwrite output
+                "-i", video_path,  # Input video (no audio)
+                "-i", audio_source,  # Input for audio
+                "-c:v", "copy",  # Copy video codec
+                "-c:a", "aac",  # Encode audio as AAC
+                "-map", "0:v:0",  # Take video from first input
+                "-map", "1:a:0?",  # Take audio from second input (optional)
+                "-shortest",  # End at shortest stream
+                output_path,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        return result.returncode == 0
+    except Exception as e:
+        print(f"Warning: Failed to merge audio: {e}")
+        return False
 
 
 def parse_args():
@@ -560,8 +628,11 @@ def main():
         print("Creating output video...")
         Path(args.output).parent.mkdir(parents=True, exist_ok=True)
 
+        # Write to temp file first, then merge audio
+        temp_video_path = os.path.join(temp_dir, "temp_video.mp4")
+
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
-        out = cv2.VideoWriter(args.output, fourcc, fps, (out_w, out_h))
+        out = cv2.VideoWriter(temp_video_path, fourcc, fps, (out_w, out_h))
 
         # Read original video and create cropped frames
         cap = cv2.VideoCapture(args.video)
@@ -593,6 +664,21 @@ def main():
 
         cap.release()
         out.release()
+
+        # Merge audio from original video
+        if check_ffmpeg() and has_audio_stream(args.video):
+            print("Merging audio from original video...")
+            if merge_audio(temp_video_path, args.video, args.output):
+                print("Audio merged successfully.")
+            else:
+                print("Warning: Failed to merge audio, saving video without audio.")
+                shutil.copy(temp_video_path, args.output)
+        else:
+            if not check_ffmpeg():
+                print("Note: ffmpeg not found, saving video without audio.")
+            else:
+                print("Note: Original video has no audio stream.")
+            shutil.copy(temp_video_path, args.output)
 
     print(f"Output saved to: {args.output}")
     return 0

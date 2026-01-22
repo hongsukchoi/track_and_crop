@@ -32,6 +32,11 @@ echo "Activating environment..."
 eval "$(conda shell.bash hook)"
 conda activate "$ENV_NAME"
 
+# Install ffmpeg for audio processing
+echo ""
+echo "Installing ffmpeg for audio processing..."
+conda install -c conda-forge ffmpeg -y
+
 # Install PyTorch with CUDA support
 echo ""
 echo "Installing PyTorch with CUDA support..."

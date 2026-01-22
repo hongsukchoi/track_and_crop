@@ -179,4 +179,5 @@ Open `http://localhost:8080` and click anywhere on the frame. Coordinates are pr
 
 - Python 3.10+
 - CUDA-capable GPU (recommended)
+- ffmpeg (for audio preservation, installed automatically by setup.sh)
 - ~2GB disk space for SAM2 large model checkpoint
