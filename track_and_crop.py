@@ -53,9 +53,43 @@ def has_audio_stream(video_path: str) -> bool:
         return False
 
 
+def convert_to_h264(video_path: str, output_path: str) -> bool:
+    """
+    Convert video to H.264 codec for browser compatibility.
+
+    Args:
+        video_path: Path to input video file
+        output_path: Path to output video
+
+    Returns:
+        True if successful, False otherwise
+    """
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg",
+                "-y",  # Overwrite output
+                "-i", video_path,
+                "-c:v", "libx264",  # H.264 codec for Chrome compatibility
+                "-preset", "medium",
+                "-crf", "23",
+                "-pix_fmt", "yuv420p",  # Required for browser compatibility
+                "-movflags", "+faststart",  # Enable streaming
+                output_path,
+            ],
+            capture_output=True,
+            text=True,
+        )
+        return result.returncode == 0
+    except Exception as e:
+        print(f"Warning: Failed to convert to H.264: {e}")
+        return False
+
+
 def merge_audio(video_path: str, audio_source: str, output_path: str) -> bool:
     """
     Merge video with audio from another source using ffmpeg.
+    Re-encodes video to H.264 for browser compatibility.
 
     Args:
         video_path: Path to video file (without audio)
@@ -67,7 +101,7 @@ def merge_audio(video_path: str, audio_source: str, output_path: str) -> bool:
     """
     try:
         # Use ffmpeg to combine video with audio
-        # -c:v copy: copy video stream without re-encoding
+        # -c:v libx264: encode to H.264 for browser compatibility
         # -c:a aac: encode audio as AAC for compatibility
         # -map 0:v: take video from first input
         # -map 1:a: take audio from second input
@@ -78,11 +112,15 @@ def merge_audio(video_path: str, audio_source: str, output_path: str) -> bool:
                 "-y",  # Overwrite output
                 "-i", video_path,  # Input video (no audio)
                 "-i", audio_source,  # Input for audio
-                "-c:v", "copy",  # Copy video codec
+                "-c:v", "libx264",  # H.264 codec for Chrome compatibility
+                "-preset", "medium",
+                "-crf", "23",
+                "-pix_fmt", "yuv420p",  # Required for browser compatibility
                 "-c:a", "aac",  # Encode audio as AAC
                 "-map", "0:v:0",  # Take video from first input
                 "-map", "1:a:0?",  # Take audio from second input (optional)
                 "-shortest",  # End at shortest stream
+                "-movflags", "+faststart",  # Enable streaming
                 output_path,
             ],
             capture_output=True,
@@ -408,7 +446,7 @@ def crop_frame_at_center(
 ) -> np.ndarray:
     """
     Crop frame centered at a specific point with fixed crop size.
-    Pads with black if crop extends beyond frame boundaries.
+    Pads with white if crop extends beyond frame boundaries.
     """
     cx, cy = center
     crop_w, crop_h = crop_size
@@ -420,8 +458,8 @@ def crop_frame_at_center(
     crop_x2 = crop_x1 + crop_w
     crop_y2 = crop_y1 + crop_h
 
-    # Create output with padding
-    output = np.zeros((crop_h, crop_w, 3), dtype=frame.dtype)
+    # Create output with white padding
+    output = np.full((crop_h, crop_w, 3), 255, dtype=frame.dtype)
 
     # Compute valid regions
     src_x1 = max(0, crop_x1)
@@ -446,7 +484,7 @@ def crop_frame_centered(
 ) -> np.ndarray:
     """
     Crop frame centered on bbox with fixed crop size.
-    Pads with black if crop extends beyond frame boundaries.
+    Pads with white if crop extends beyond frame boundaries.
     """
     x1, y1, x2, y2 = bbox
     crop_w, crop_h = crop_size
@@ -462,8 +500,8 @@ def crop_frame_centered(
     crop_x2 = crop_x1 + crop_w
     crop_y2 = crop_y1 + crop_h
 
-    # Create output with padding
-    output = np.zeros((crop_h, crop_w, 3), dtype=frame.dtype)
+    # Create output with white padding
+    output = np.full((crop_h, crop_w, 3), 255, dtype=frame.dtype)
 
     # Compute valid regions
     src_x1 = max(0, crop_x1)
@@ -665,19 +703,26 @@ def main():
         cap.release()
         out.release()
 
-        # Merge audio from original video
-        if check_ffmpeg() and has_audio_stream(args.video):
-            print("Merging audio from original video...")
-            if merge_audio(temp_video_path, args.video, args.output):
-                print("Audio merged successfully.")
+        # Convert to H.264 and merge audio from original video
+        if check_ffmpeg():
+            if has_audio_stream(args.video):
+                print("Converting to H.264 and merging audio from original video...")
+                if merge_audio(temp_video_path, args.video, args.output):
+                    print("Video converted and audio merged successfully.")
+                else:
+                    print("Warning: Failed to convert/merge, trying without audio...")
+                    if not convert_to_h264(temp_video_path, args.output):
+                        print("Warning: H.264 conversion failed, copying raw video.")
+                        shutil.copy(temp_video_path, args.output)
             else:
-                print("Warning: Failed to merge audio, saving video without audio.")
-                shutil.copy(temp_video_path, args.output)
+                print("Converting to H.264 (no audio stream in original)...")
+                if convert_to_h264(temp_video_path, args.output):
+                    print("Video converted successfully.")
+                else:
+                    print("Warning: H.264 conversion failed, copying raw video.")
+                    shutil.copy(temp_video_path, args.output)
         else:
-            if not check_ffmpeg():
-                print("Note: ffmpeg not found, saving video without audio.")
-            else:
-                print("Note: Original video has no audio stream.")
+            print("Warning: ffmpeg not found, saving video with mp4v codec (may not play in browser).")
             shutil.copy(temp_video_path, args.output)
 
     print(f"Output saved to: {args.output}")
