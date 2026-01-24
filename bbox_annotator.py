@@ -84,6 +84,23 @@ def generate_bash_script(
     return script_content
 
 
+VIDEO_EXTENSIONS = {".mp4", ".avi", ".mov", ".mkv", ".webm", ".flv", ".wmv", ".m4v"}
+
+
+def find_videos_in_directory(directory: str) -> list[str]:
+    """Find all video files in a directory."""
+    dir_path = Path(directory).expanduser().resolve()
+    if not dir_path.is_dir():
+        raise ValueError(f"Not a valid directory: {directory}")
+
+    videos = []
+    for ext in VIDEO_EXTENSIONS:
+        videos.extend(dir_path.glob(f"*{ext}"))
+        videos.extend(dir_path.glob(f"*{ext.upper()}"))
+
+    return sorted([str(v) for v in videos])
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Interactive bounding box annotator for videos"
@@ -91,8 +108,13 @@ def main() -> None:
     parser.add_argument(
         "videos",
         type=str,
-        nargs="+",
+        nargs="*",
         help="Paths to video files to annotate",
+    )
+    parser.add_argument(
+        "-d", "--directory",
+        type=str,
+        help="Directory containing video files to annotate",
     )
     parser.add_argument(
         "--port",
@@ -126,17 +148,29 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    # Validate video paths
+    # Collect video paths from directory or arguments
     video_paths = []
+
+    if args.directory:
+        try:
+            video_paths = find_videos_in_directory(args.directory)
+            print(f"Found {len(video_paths)} video(s) in {args.directory}")
+        except ValueError as e:
+            print(f"Error: {e}")
+            return
+
+    # Also add any explicitly provided videos
     for v in args.videos:
         path = Path(v).expanduser().resolve()
         if not path.exists():
             print(f"Warning: Video not found: {v}")
             continue
-        video_paths.append(str(path))
+        if str(path) not in video_paths:
+            video_paths.append(str(path))
 
     if not video_paths:
         print("Error: No valid video files provided.")
+        print("Usage: bbox_annotator.py -d <directory> or bbox_annotator.py <video1> <video2> ...")
         return
 
     # Create video names for dropdown
