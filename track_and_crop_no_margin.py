@@ -446,21 +446,37 @@ def crop_frame_at_center(
 ) -> np.ndarray:
     """
     Crop frame centered at a specific point with fixed crop size.
-    Adjusts center to keep crop within frame boundaries (no padding).
+    Shifts the crop window to stay within frame boundaries (no margins).
     """
     cx, cy = center
     crop_w, crop_h = crop_size
     frame_h, frame_w = frame.shape[:2]
 
-    # Clamp center so crop stays within frame bounds
-    cx = max(crop_w / 2, min(frame_w - crop_w / 2, cx))
-    cy = max(crop_h / 2, min(frame_h - crop_h / 2, cy))
-
-    # Crop bounds (guaranteed to be within frame)
+    # Crop bounds centered on target
     crop_x1 = int(cx - crop_w / 2)
     crop_y1 = int(cy - crop_h / 2)
     crop_x2 = crop_x1 + crop_w
     crop_y2 = crop_y1 + crop_h
+
+    # Shift crop window to stay within frame bounds
+    if crop_x1 < 0:
+        crop_x2 -= crop_x1
+        crop_x1 = 0
+    if crop_y1 < 0:
+        crop_y2 -= crop_y1
+        crop_y1 = 0
+    if crop_x2 > frame_w:
+        crop_x1 -= (crop_x2 - frame_w)
+        crop_x2 = frame_w
+    if crop_y2 > frame_h:
+        crop_y1 -= (crop_y2 - frame_h)
+        crop_y2 = frame_h
+
+    # Final clamp (in case crop is larger than frame)
+    crop_x1 = max(0, crop_x1)
+    crop_y1 = max(0, crop_y1)
+    crop_x2 = min(frame_w, crop_x2)
+    crop_y2 = min(frame_h, crop_y2)
 
     return frame[crop_y1:crop_y2, crop_x1:crop_x2].copy()
 
@@ -472,7 +488,7 @@ def crop_frame_centered(
 ) -> np.ndarray:
     """
     Crop frame centered on bbox with fixed crop size.
-    Adjusts center to keep crop within frame boundaries (no padding).
+    Shifts the crop window to stay within frame boundaries (no margins).
     """
     x1, y1, x2, y2 = bbox
     crop_w, crop_h = crop_size
@@ -482,15 +498,31 @@ def crop_frame_centered(
     cx = (x1 + x2) / 2
     cy = (y1 + y2) / 2
 
-    # Clamp center so crop stays within frame bounds
-    cx = max(crop_w / 2, min(frame_w - crop_w / 2, cx))
-    cy = max(crop_h / 2, min(frame_h - crop_h / 2, cy))
-
-    # Crop bounds (guaranteed to be within frame)
+    # Crop bounds centered on object
     crop_x1 = int(cx - crop_w / 2)
     crop_y1 = int(cy - crop_h / 2)
     crop_x2 = crop_x1 + crop_w
     crop_y2 = crop_y1 + crop_h
+
+    # Shift crop window to stay within frame bounds
+    if crop_x1 < 0:
+        crop_x2 -= crop_x1
+        crop_x1 = 0
+    if crop_y1 < 0:
+        crop_y2 -= crop_y1
+        crop_y1 = 0
+    if crop_x2 > frame_w:
+        crop_x1 -= (crop_x2 - frame_w)
+        crop_x2 = frame_w
+    if crop_y2 > frame_h:
+        crop_y1 -= (crop_y2 - frame_h)
+        crop_y2 = frame_h
+
+    # Final clamp (in case crop is larger than frame)
+    crop_x1 = max(0, crop_x1)
+    crop_y1 = max(0, crop_y1)
+    crop_x2 = min(frame_w, crop_x2)
+    crop_y2 = min(frame_h, crop_y2)
 
     return frame[crop_y1:crop_y2, crop_x1:crop_x2].copy()
 

@@ -218,17 +218,22 @@ def main() -> None:
             initial_value=current_video,
         )
 
-        # Status display
-        status_text = client.gui.add_text(
-            "Status",
-            initial_value="Click top-left corner of object",
-            disabled=True,
+        # Prev/Next buttons for video navigation
+        with client.gui.add_folder("Navigation", expand_by_default=True):
+            prev_button = client.gui.add_button("← Prev")
+            next_button = client.gui.add_button("Next →")
+
+        # Click progress indicators
+        click_progress_text = client.gui.add_markdown(
+            "**Click Progress:**\n"
+            "- [ ] Top-left corner\n"
+            "- [ ] Bottom-right corner"
         )
 
-        # Coordinates display
-        coords_text = client.gui.add_text(
-            "Coordinates",
-            initial_value="Bbox: (not set)",
+        # Next action indicator
+        next_action_text = client.gui.add_text(
+            "Next Action",
+            initial_value="Click top-left corner",
             disabled=True,
         )
 
@@ -272,23 +277,30 @@ def main() -> None:
             """Update all display elements."""
             anno = annotations[current_video]
 
-            # Update coords display
+            # Update click progress indicators
             if anno.bbox:
                 x1, y1, x2, y2 = anno.bbox
-                coords_text.value = f"Bbox: ({x1}, {y1}, {x2}, {y2})"
+                click_progress_text.content = (
+                    "**Click Progress:**\n"
+                    f"- [x] Top-left: ({x1}, {y1})\n"
+                    f"- [x] Bottom-right: ({x2}, {y2})"
+                )
+                next_action_text.value = "Done! Save, Clear, or Next video"
             elif len(anno.click_state) == 1:
                 x, y = anno.click_state[0]
-                coords_text.value = f"Top-left: ({x}, {y}) - click bottom-right"
+                click_progress_text.content = (
+                    "**Click Progress:**\n"
+                    f"- [x] Top-left: ({x}, {y})\n"
+                    "- [ ] Bottom-right: waiting..."
+                )
+                next_action_text.value = "Click bottom-right corner"
             else:
-                coords_text.value = "Bbox: (not set)"
-
-            # Update status
-            if anno.bbox:
-                status_text.value = "Bbox saved! Select another video or Finish."
-            elif len(anno.click_state) == 1:
-                status_text.value = "Click bottom-right corner of object"
-            else:
-                status_text.value = "Click top-left corner of object"
+                click_progress_text.content = (
+                    "**Click Progress:**\n"
+                    "- [ ] Top-left: waiting...\n"
+                    "- [ ] Bottom-right: waiting..."
+                )
+                next_action_text.value = "Click top-left corner"
 
             # Update saved count
             saved_count = sum(1 for a in annotations.values() if a.bbox is not None)
@@ -311,6 +323,21 @@ def main() -> None:
         @video_dropdown.on_update
         def on_video_change(_) -> None:
             switch_video(video_dropdown.value)
+
+        # Handle prev/next buttons
+        @prev_button.on_click
+        def on_prev(_) -> None:
+            current_idx = video_names.index(current_video)
+            new_idx = (current_idx - 1) % len(video_names)
+            video_dropdown.value = video_names[new_idx]
+            switch_video(video_names[new_idx])
+
+        @next_button.on_click
+        def on_next(_) -> None:
+            current_idx = video_names.index(current_video)
+            new_idx = (current_idx + 1) % len(video_names)
+            video_dropdown.value = video_names[new_idx]
+            switch_video(video_names[new_idx])
 
         # Handle click events
         @client.scene.on_pointer_event(event_type="click")
@@ -358,7 +385,7 @@ def main() -> None:
                 print(f"[{current_video}] Bbox confirmed: {anno.bbox}")
                 update_display()
             else:
-                status_text.value = "No bbox to save! Click two corners first."
+                next_action_text.value = "No bbox to save! Click two corners first."
 
         # Handle clear button
         @clear_button.on_click
@@ -374,7 +401,7 @@ def main() -> None:
         def on_finish(_) -> None:
             saved_count = sum(1 for a in annotations.values() if a.bbox is not None)
             if saved_count == 0:
-                status_text.value = "No annotations to save!"
+                next_action_text.value = "No annotations to save!"
                 return
 
             script_content = generate_bash_script(
@@ -391,7 +418,7 @@ def main() -> None:
             print(script_content)
             print(f"{'='*60}\n")
 
-            status_text.value = f"Script saved to {args.output_script}!"
+            next_action_text.value = f"Script saved to {args.output_script}!"
 
         # Initial display update
         update_display()
